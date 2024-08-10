@@ -1,6 +1,9 @@
 package raymond
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 //
 // Those tests come from:
@@ -8,6 +11,41 @@ import "testing"
 //
 // Note that handlebars.js does NOT benchmark template compilation, it only benchmarks evaluation.
 //
+
+func BenchmarkRenderParallel(b *testing.B) {
+	contentJSON, err := os.ReadFile("./test_data.txt")
+	if err != nil {
+		b.Fatalf("failed to read file: %v", err)
+	}
+	source := string(contentJSON)
+
+	ctx := map[string]interface{}{
+		"USER_NAME": "hogehoge",
+	}
+	b.ResetTimer()
+	b.RunParallel(func(pb *testing.PB) {
+		for pb.Next() {
+			Render(source, ctx)
+		}
+	})
+}
+
+func BenchmarkRender(b *testing.B) {
+	contentJSON, err := os.ReadFile("./test_data.txt")
+	if err != nil {
+		b.Fatalf("failed to read file: %v", err)
+	}
+	source := string(contentJSON)
+
+	ctx := map[string]interface{}{
+		"USER_NAME": "hogehoge",
+	}
+
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		Render(source, ctx)
+	}
+}
 
 func BenchmarkArguments(b *testing.B) {
 	source := `{{foo person "person" 1 true foo=bar foo="person" foo=1 foo=true}}`
