@@ -57,29 +57,11 @@ var (
 	rDotID               = regexp.MustCompile(`^\.` + lookheadChars)
 	rTrue                = regexp.MustCompile(`^true` + literalLookheadChars)
 	rFalse               = regexp.MustCompile(`^false` + literalLookheadChars)
-	rOpenRaw             = regexp.MustCompile(`^\{\{\{\{`)
-	rCloseRaw            = regexp.MustCompile(`^\}\}\}\}`)
-	rOpenEndRaw          = regexp.MustCompile(`^\{\{\{\{/`)
 	rOpenEndRawLookAhead = regexp.MustCompile(`\{\{\{\{/`)
-	rOpenUnescaped       = regexp.MustCompile(`^\{\{~?\{`)
 	rCloseUnescaped      = regexp.MustCompile(`^\}~?\}\}`)
-	rOpenBlock           = regexp.MustCompile(`^\{\{~?#`)
-	rOpenEndBlock        = regexp.MustCompile(`^\{\{~?/`)
-	rOpenPartial         = regexp.MustCompile(`^\{\{~?>`)
-	// {{^}} or {{else}}
-	rInverse          = regexp.MustCompile(`^(\{\{~?\^\s*~?\}\}|\{\{~?\s*else\s*~?\}\})`)
-	rOpenInverse      = regexp.MustCompile(`^\{\{~?\^`)
-	rOpenInverseChain = regexp.MustCompile(`^\{\{~?\s*else`)
-	// {{ or {{&
-	rOpen            = regexp.MustCompile(`^\{\{~?&?`)
-	rClose           = regexp.MustCompile(`^~?\}\}`)
-	rOpenBlockParams = regexp.MustCompile(`^as\s+\|`)
-	// {{!--  ... --}}
-	rOpenCommentDash  = regexp.MustCompile(`^\{\{~?!--\s*`)
-	rCloseCommentDash = regexp.MustCompile(`^\s*--~?\}\}`)
-	// {{! ... }}
-	rOpenComment  = regexp.MustCompile(`^\{\{~?!\s*`)
-	rCloseComment = regexp.MustCompile(`^\s*~?\}\}`)
+	rInverse             = regexp.MustCompile(`^(\{\{~?\^\s*~?\}\}|\{\{~?\s*else\s*~?\}\})`)
+	rCloseCommentDash    = regexp.MustCompile(`^\s*--~?\}\}`)
+	rCloseComment        = regexp.MustCompile(`^\s*~?\}\}`)
 )
 
 // Scan scans given input.
@@ -278,12 +260,12 @@ func lexContent(l *Lexer) lexFunc {
 	} else if l.isString(escapedOpenMustache) {
 		// \{{
 		next = lexEscapedOpenMustache
-	} else if str := l.findRegexp(rOpenCommentDash); str != "" {
+	} else if str := findPattern(l.input[l.pos:], checkROpenCommentDash); str != "" {
 		// {{!--
 		l.closeComment = rCloseCommentDash
 
 		next = lexComment
-	} else if str := l.findRegexp(rOpenComment); str != "" {
+	} else if str := findPattern(l.input[l.pos:], checkROpenComment); str != "" {
 		// {{!
 		l.closeComment = rCloseComment
 
@@ -336,27 +318,27 @@ func lexOpenMustache(l *Lexer) lexFunc {
 
 	nextFunc := lexExpression
 
-	if str = l.findRegexp(rOpenEndRaw); str != "" {
+	if str = findPattern(l.input[l.pos:], checkROpenEndRaw); str != "" {
 		tok = TokenOpenEndRawBlock
-	} else if str = l.findRegexp(rOpenRaw); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpenRaw); str != "" {
 		tok = TokenOpenRawBlock
 		l.rawBlock = true
-	} else if str = l.findRegexp(rOpenUnescaped); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpenUnescaped); str != "" {
 		tok = TokenOpenUnescaped
-	} else if str = l.findRegexp(rOpenBlock); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpenBlock); str != "" {
 		tok = TokenOpenBlock
-	} else if str = l.findRegexp(rOpenEndBlock); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpenEndBlock); str != "" {
 		tok = TokenOpenEndBlock
-	} else if str = l.findRegexp(rOpenPartial); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpenPartial); str != "" {
 		tok = TokenOpenPartial
 	} else if str = l.findRegexp(rInverse); str != "" {
 		tok = TokenInverse
 		nextFunc = lexContent
-	} else if str = l.findRegexp(rOpenInverse); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpenInverse); str != "" {
 		tok = TokenOpenInverse
-	} else if str = l.findRegexp(rOpenInverseChain); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpenInverseChain); str != "" {
 		tok = TokenOpenInverseChain
-	} else if str = l.findRegexp(rOpen); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkROpen); str != "" {
 		tok = TokenOpen
 	} else {
 		// this is rotten
@@ -374,13 +356,13 @@ func lexCloseMustache(l *Lexer) lexFunc {
 	var str string
 	var tok TokenKind
 
-	if str = l.findRegexp(rCloseRaw); str != "" {
+	if str = findPattern(l.input[l.pos:], checkRCloseRaw); str != "" {
 		// }}}}
 		tok = TokenCloseRawBlock
 	} else if str = l.findRegexp(rCloseUnescaped); str != "" {
 		// }}}
 		tok = TokenCloseUnescaped
-	} else if str = l.findRegexp(rClose); str != "" {
+	} else if str = findPattern(l.input[l.pos:], checkRClose); str != "" {
 		// }}
 		tok = TokenClose
 	} else {
@@ -404,7 +386,7 @@ func lexExpression(l *Lexer) lexFunc {
 	// search some patterns before advancing scanning position
 
 	// "as |"
-	if str := l.findRegexp(rOpenBlockParams); str != "" {
+	if str := findPattern(l.input[l.pos:], checkROpenBlockParams); str != "" {
 		l.pos += len(str)
 		l.emit(TokenOpenBlockParams)
 		return lexExpression
@@ -636,4 +618,13 @@ func isIgnorable(r rune) bool {
 // NOTE borrowed from https://github.com/golang/go/tree/master/src/text/template/parse/lex.go
 func isAlphaNumeric(r rune) bool {
 	return r == '_' || unicode.IsLetter(r) || unicode.IsDigit(r)
+}
+
+// raymondがRegexpを使っている箇所をstringの比較に変更
+func findPattern(str string, check func(string) (int, int)) string {
+	start, length := check(str)
+	if start != -1 {
+		return str[start : start+length]
+	}
+	return ""
 }
